@@ -1,14 +1,14 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="PinLens Ingestion Pipeline")
 
-# Enable CORS so your frontend can communicate with your API
+# CRITICAL: Must be added right after app initialization
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows requests from your frontend domain
+    allow_origins=["*"],  # Allows requests from your static frontend domain
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["*"],  # Allows POST, GET, OPTIONS, etc.
     allow_headers=["*"],
 )
 
