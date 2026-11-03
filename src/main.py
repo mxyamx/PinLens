@@ -1,18 +1,28 @@
-from fastapi import FastAPI, HTTPException, status, Response
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="PinLens Ingestion Pipeline")
 
-# CRITICAL: Must be added right after app initialization
+# 1. Standard FastAPI CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows requests from your static frontend domain
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows POST, GET, OPTIONS, etc.
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
-validator_engine = PinValidationEngine()
+# 2. Bulletproof Fallback: Explicit OPTIONS preflight handler for any route
+@app.options("/{full_path:path}")
+async def preflight_handler(request: Request, full_path: str):
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        },
+    )
 
 @app.get("/")
 async def root():
