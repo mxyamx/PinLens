@@ -39,7 +39,7 @@
         <div class="flex items-center gap-4">
             <div id="status-badge" class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
                 <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                Pipeline Online (Async API & Redis active)
+                Render API Connected
             </div>
         </div>
     </header>
@@ -104,7 +104,7 @@
                             <i data-lucide="plus-circle" class="w-5 h-5 text-red-600"></i>
                             Ingest New Pin Payload
                         </h2>
-                        <p class="text-xs text-slate-500">Submit an image URL to trigger AI vision classification & guardrail audits.</p>
+                        <p class="text-xs text-slate-500">Submit an image URL to trigger AI vision classification & guardrail audits on Render.</p>
                     </div>
                     <button id="load-preset-btn" type="button" class="text-xs font-semibold text-red-600 hover:underline flex items-center gap-1">
                         Load Random Preset
@@ -125,7 +125,7 @@
 
                     <div>
                         <label class="block text-xs font-medium mb-1">Raw Caption / User Prompt</label>
-                        <input type="text" id="input-caption" class="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white/50 bg-white/50 focus:ring-2 focus:ring-red-500 outline-none" placeholder="E.g., Minimalist living room layout with warm wooden accents">
+                        <input type="text" id="input-caption" class="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 focus:ring-red-500 outline-none" placeholder="E.g., Minimalist living room layout with warm wooden accents">
                     </div>
 
                     <div class="flex flex-wrap items-center justify-between gap-4 pt-2">
@@ -202,6 +202,9 @@ pinlens_cache_hits_total 0
 
     <!-- JavaScript Logic -->
     <script>
+        // Remplace par l'URL exacte de ton service Render (sans le / final)
+        const API_BASE_URL = "https://pinlens-api.onrender.com";
+
         // 10 MOCKED PIN PRESETS
         const INITIAL_PRESETS = [
             { pin_id: "pin_arch_001", image_url: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c", raw_caption: "Modern minimalist exterior architecture with large glass windows", category: "Architecture & Design", tags: ["architecture", "modern", "exterior", "minimalist"], confidence: 0.96 },
@@ -252,10 +255,10 @@ pinlens_cache_hits_total 0
                     <div class="relative overflow-hidden aspect-video bg-slate-200">
                         <img src="${pin.image_url}" alt="${pin.raw_caption}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" loading="lazy" onerror="this.src='https://images.unsplash.com/photo-1579783902614-a3fb3927b675'">
                         <span class="absolute top-3 left-3 bg-slate-900/80 backdrop-blur-md text-white text-[10px] font-semibold px-2.5 py-1 rounded-full">
-                            ${pin.category}
+                            ${pin.category || 'Custom Ingest'}
                         </span>
                         <span class="absolute bottom-3 right-3 bg-emerald-500/95 text-white text-[10px] font-mono px-2 py-0.5 rounded-md font-bold shadow">
-                            ${(pin.confidence * 100).toFixed(0)}% conf
+                            ${((pin.confidence || 0.93) * 100).toFixed(0)}% conf
                         </span>
                     </div>
                     <div class="p-4 flex-1 flex flex-col justify-between space-y-3">
@@ -263,11 +266,11 @@ pinlens_cache_hits_total 0
                             ${pin.raw_caption || 'No caption provided.'}
                         </p>
                         <div class="flex flex-wrap gap-1">
-                            ${pin.tags.map(tag => `<span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">#${tag}</span>`).join('')}
+                            ${(pin.tags || ["custom", "live-ingest"]).map(tag => `<span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">#${tag}</span>`).join('')}
                         </div>
                         <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] font-mono text-slate-400">
                             <span>ID: ${pin.pin_id}</span>
-                            <span class="text-emerald-600">is_safe: true</span>
+                            <span class="text-emerald-600">is_safe: ${pin.is_safe !== undefined ? pin.is_safe : true}</span>
                         </div>
                     </div>
                 `;
@@ -295,8 +298,8 @@ pinlens_cache_hits_total ${cacheHits}`;
             }
         }
 
-        // Handle Form Submit (Pipeline Execution)
-        document.getElementById('ingest-form').addEventListener('submit', (e) => {
+        // Handle Form Submit (Real API Pipeline Execution)
+        document.getElementById('ingest-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const pinId = document.getElementById('input-pin-id').value;
             const imageUrl = document.getElementById('input-image-url').value;
@@ -304,35 +307,42 @@ pinlens_cache_hits_total ${cacheHits}`;
             const isLowConf = document.getElementById('check-low-confidence').checked;
             const isForceCache = document.getElementById('check-force-cache').checked;
 
-            totalIngested++;
+            try {
+                // Appel réel vers ton API Render
+                const response = await fetch(`${API_BASE_URL}/ingest`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        pin_id: pinId,
+                        image_url: imageUrl,
+                        raw_caption: caption || "",
+                        simulate_low_confidence: isLowConf,
+                        force_cache: isForceCache
+                    })
+                });
 
-            if (isLowConf) {
-                rejects++;
-                alert(`⚠️ Pipeline Guardrail Triggered!\n\nAI Confidence Score (0.42) fell below threshold floor (0.70).\nPin payload [${pinId}] was rejected.`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    rejects++;
+                    totalIngested++;
+                    alert(`⚠️ Pipeline Guardrail Triggered!\n\n${data.detail || 'Pin rejeté par les gardes-fous (confiance < 0.70).'}`);
+                    renderFeed();
+                    return;
+                }
+
+                totalIngested++;
+                if (isForceCache) cacheHits++;
+
+                isShowingPresets = false;
+                currentFeed = [data]; // Affiche le pin validé renvoyé par FastAPI
                 renderFeed();
-                return;
+                metricLatency.innerText = `${Math.floor(Math.random() * 20 + 35)}ms`;
+
+            } catch (error) {
+                console.error("Erreur de connexion à l'API Render:", error);
+                alert("Impossible de joindre le backend sur Render. Vérifie que l'URL est correcte.");
             }
-
-            if (isForceCache) {
-                cacheHits++;
-            }
-
-            const newPin = {
-                pin_id: pinId,
-                image_url: imageUrl,
-                raw_caption: caption || "Custom user submitted pin payload",
-                category: "Custom Ingest",
-                tags: ["custom", "live-ingest", "verified"],
-                confidence: isForceCache ? 0.99 : 0.93
-            };
-
-            // Switch view state to show ONLY the newly executed pin
-            isShowingPresets = false;
-            currentFeed = [newPin];
-            renderFeed();
-            
-            // Randomize latency metric display
-            metricLatency.innerText = `${Math.floor(Math.random() * 20 + 35)}ms`;
         });
 
         // Load Preset Button
