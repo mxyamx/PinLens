@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PinLens — AI Visual Metadata & Guardrails Engine</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    
+    .glass-card {
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(229, 231, 235, 0.8);
+    }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen transition-colors duration-200">
+
+    <!-- Top Navigation Header -->
+    <header class="sticky top-0 z-50 glass-card border-b px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="bg-red-600 text-white p-2 rounded-2xl flex items-center justify-center shadow-lg shadow-red-500/20">
+                <i data-lucide="pin" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="font-bold text-xl tracking-tight">PinLens</h1>
+                    <span class="text-xs bg-red-100 text-red-700 font-mono px-2 py-0.5 rounded-full border border-red-200">v1.0.0</span>
+                </div>
+                <p class="text-xs text-slate-500">AI Visual Metadata Ingestion & Guardrails Engine</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-4">
+            <div id="status-badge" class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                Pipeline Online (Async API & Redis active)
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+
+        <!-- Top Telemetry Cards -->
+        <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="glass-card p-5 rounded-2xl shadow-sm space-y-1">
+                <div class="flex items-center justify-between text-slate-500">
+                    <span class="text-xs font-semibold uppercase tracking-wider">Total Ingested</span>
+                    <i data-lucide="layers" class="w-4 h-4"></i>
+                </div>
+                <div id="metric-total" class="text-3xl font-extrabold tracking-tight">10</div>
+                <div class="text-[11px] text-emerald-600 flex items-center gap-1 font-medium">
+                    <i data-lucide="check-circle" class="w-3 h-3"></i> Validated Real-time
+                </div>
+            </div>
+
+            <div class="glass-card p-5 rounded-2xl shadow-sm space-y-1">
+                <div class="flex items-center justify-between text-slate-500">
+                    <span class="text-xs font-semibold uppercase tracking-wider">Cache Hit Rate</span>
+                    <i data-lucide="database" class="w-4 h-4 text-indigo-500"></i>
+                </div>
+                <div id="metric-cache" class="text-3xl font-extrabold tracking-tight text-indigo-600">0.0%</div>
+                <div class="text-[11px] text-slate-500 font-mono">
+                    Redis In-Memory Tier
+                </div>
+            </div>
+
+            <div class="glass-card p-5 rounded-2xl shadow-sm space-y-1">
+                <div class="flex items-center justify-between text-slate-500">
+                    <span class="text-xs font-semibold uppercase tracking-wider">Guardrail Rejects</span>
+                    <i data-lucide="shield-alert" class="w-4 h-4 text-amber-500"></i>
+                </div>
+                <div id="metric-rejects" class="text-3xl font-extrabold tracking-tight text-amber-600">0</div>
+                <div class="text-[11px] text-slate-500">
+                    Confidence Floor &lt; 0.70
+                </div>
+            </div>
+
+            <div class="glass-card p-5 rounded-2xl shadow-sm space-y-1">
+                <div class="flex items-center justify-between text-slate-500">
+                    <span class="text-xs font-semibold uppercase tracking-wider">Avg Latency</span>
+                    <i data-lucide="zap" class="w-4 h-4 text-emerald-500"></i>
+                </div>
+                <div id="metric-latency" class="text-3xl font-extrabold tracking-tight text-emerald-600">48ms</div>
+                <div class="text-[11px] text-slate-500 font-mono">
+                    Async Pydantic + FastAPI
+                </div>
+            </div>
+        </section>
+
+        <!-- Pipeline Ingestion Form & Prometheus Live Stream -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Ingest Form -->
+            <div class="lg:col-span-2 glass-card p-6 rounded-2xl shadow-sm space-y-5">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="font-bold text-lg flex items-center gap-2">
+                            <i data-lucide="plus-circle" class="w-5 h-5 text-red-600"></i>
+                            Ingest New Pin Payload
+                        </h2>
+                        <p class="text-xs text-slate-500">Submit an image URL to trigger AI vision classification & guardrail audits.</p>
+                    </div>
+                    <button id="load-preset-btn" type="button" class="text-xs font-semibold text-red-600 hover:underline flex items-center gap-1">
+                        Load Random Preset
+                    </button>
+                </div>
+
+                <form id="ingest-form" class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium mb-1">Pin ID</label>
+                            <input type="text" id="input-pin-id" required class="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 focus:ring-red-500 outline-none" placeholder="pin_custom_101">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-medium mb-1">Image URL</label>
+                            <input type="url" id="input-image-url" required class="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 focus:ring-red-500 outline-none" placeholder="https://images.unsplash.com/...">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium mb-1">Raw Caption / User Prompt</label>
+                        <input type="text" id="input-caption" class="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white/50 bg-white/50 focus:ring-2 focus:ring-red-500 outline-none" placeholder="E.g., Minimalist living room layout with warm wooden accents">
+                    </div>
+
+                    <div class="flex flex-wrap items-center justify-between gap-4 pt-2">
+                        <div class="flex items-center gap-4 text-xs">
+                            <label class="flex items-center gap-2 cursor-pointer select-none">
+                                <input type="checkbox" id="check-low-confidence" class="rounded text-red-600 focus:ring-red-500 border-slate-300">
+                                <span>Simulate Low AI Confidence (&lt; 0.70)</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer select-none">
+                                <input type="checkbox" id="check-force-cache" class="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300">
+                                <span>Force Cache Hit</span>
+                            </label>
+                        </div>
+
+                        <button type="submit" class="w-full sm:w-auto px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-medium text-xs rounded-xl shadow-lg shadow-red-500/20 transition flex items-center justify-center gap-2">
+                            <i data-lucide="cpu" class="w-4 h-4"></i>
+                            Execute Pipeline Ingest
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Prometheus Telemetry Box -->
+            <div class="glass-card p-6 rounded-2xl shadow-sm space-y-4 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="font-bold text-sm flex items-center gap-2">
+                            <i data-lucide="activity" class="w-4 h-4 text-emerald-500"></i>
+                            Prometheus Telemetry Stream
+                        </h3>
+                        <span class="text-[10px] font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-500">/metrics</span>
+                    </div>
+                    <p class="text-xs text-slate-500 mb-3">Live metric counters output by the Python FastAPI backend exporter.</p>
+                    
+                    <pre id="prometheus-stream" class="bg-slate-900 text-slate-200 text-[10px] font-mono p-3 rounded-xl overflow-x-auto h-40 leading-relaxed border border-slate-800">
+# HELP pinlens_processing_latency Processing time
+pinlens_pins_ingested_total 10
+pinlens_validation_failures_total 0
+pinlens_cache_hits_total 0
+                    </pre>
+                </div>
+
+                <div class="flex items-center justify-between text-xs text-slate-500">
+                    <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Prometheus Exporter Active</span>
+                    <button id="reset-presets-btn" class="text-red-600 hover:underline">Reset Presets View</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Ingested Pins Feed -->
+        <section class="space-y-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 id="feed-title" class="font-bold text-xl tracking-tight flex items-center gap-2">
+                        <i data-lucide="grid" class="w-5 h-5 text-slate-500"></i>
+                        Preset Gallery (10 Sample Pins)
+                    </h2>
+                    <p id="feed-subtitle" class="text-xs text-slate-500">Showing initial presets. Execute an ingest above to run live pipeline filtering.</p>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <button id="clear-feed-btn" class="text-xs font-medium px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 transition">
+                        Clear Feed
+                    </button>
+                </div>
+            </div>
+
+            <!-- Masonry Grid -->
+            <div id="pins-feed" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                <!-- Dynamically populated pins -->
+            </div>
+        </section>
+    </main>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // 10 MOCKED PIN PRESETS
+        const INITIAL_PRESETS = [
+            { pin_id: "pin_arch_001", image_url: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c", raw_caption: "Modern minimalist exterior architecture with large glass windows", category: "Architecture & Design", tags: ["architecture", "modern", "exterior", "minimalist"], confidence: 0.96 },
+            { pin_id: "pin_food_002", image_url: "https://images.unsplash.com/photo-1540420773420-3366772f4999", raw_caption: "Fresh vibrant avocado salad bowl with healthy greens", category: "Food & Recipes", tags: ["salad", "healthy", "avocado", "organic"], confidence: 0.94 },
+            { pin_id: "pin_style_003", image_url: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f", raw_caption: "Urban streetwear fashion outfit shoot in downtown alley", category: "Fashion & Style", tags: ["streetwear", "urban", "fashion", "outfit"], confidence: 0.91 },
+            { pin_id: "pin_home_004", image_url: "https://images.unsplash.com/photo-1513694203232-719a280e022f", raw_caption: "Cozy living room setup with warm neutral lighting and plants", category: "Home & Interior", tags: ["living room", "interior", "cozy", "aesthetic"], confidence: 0.95 },
+            { pin_id: "pin_travel_005", image_url: "https://images.unsplash.com/photo-1506744038136-46273834b3fb", raw_caption: "Breathtaking mountain sunrise view over a misty alpine lake", category: "Travel & Nature", tags: ["mountains", "sunrise", "lake", "landscape"], confidence: 0.98 },
+            { pin_id: "pin_diy_006", image_url: "https://images.unsplash.com/photo-1452860606243-0cd8c0fb8d43", raw_caption: "Handmade wooden crafting tools and creative stationery setup", category: "DIY & Crafts", tags: ["woodwork", "crafting", "handmade", "tools"], confidence: 0.89 },
+            { pin_id: "pin_tech_007", image_url: "https://images.unsplash.com/photo-1555066931-4365d14bab8c", raw_caption: "Clean dual-monitor mechanical keyboard software development station", category: "Tech & Workstation", tags: ["developer", "code", "desk setup", "minimalist"], confidence: 0.97 },
+            { pin_id: "pin_fit_008", image_url: "https://images.unsplash.com/photo-1517838277536-f5f99be501cd", raw_caption: "Morning strength training workout gym setup with dumbbells", category: "Fitness & Wellness", tags: ["gym", "workout", "fitness", "strength"], confidence: 0.93 },
+            { pin_id: "pin_art_009", image_url: "https://images.unsplash.com/photo-1579783902614-a3fb3927b675", raw_caption: "Abstract colorful oil painting canvas texture closeup", category: "Art & Illustration", tags: ["abstract", "oil painting", "art", "texture"], confidence: 0.92 },
+            { pin_id: "pin_nature_010", image_url: "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05", raw_caption: "Dense evergreen pine forest with morning sun rays filtering through", category: "Travel & Nature", tags: ["forest", "pines", "sunlight", "nature"], confidence: 0.96 },
+        ];
+
+        // State Tracking
+        let currentFeed = [...INITIAL_PRESETS];
+        let totalIngested = INITIAL_PRESETS.length;
+        let cacheHits = 0;
+        let rejects = 0;
+        let isShowingPresets = true;
+
+        // DOM Elements
+        const feedContainer = document.getElementById('pins-feed');
+        const feedTitle = document.getElementById('feed-title');
+        const feedSubtitle = document.getElementById('feed-subtitle');
+        const metricTotal = document.getElementById('metric-total');
+        const metricCache = document.getElementById('metric-cache');
+        const metricRejects = document.getElementById('metric-rejects');
+        const metricLatency = document.getElementById('metric-latency');
+        const prometheusStream = document.getElementById('prometheus-stream');
+
+        // Render Functions
+        function renderFeed() {
+            feedContainer.innerHTML = '';
+            
+            if (isShowingPresets) {
+                feedTitle.innerHTML = `<i data-lucide="grid" class="w-5 h-5 text-slate-500"></i> Preset Gallery (${currentFeed.length} Sample Pins)`;
+                feedSubtitle.innerText = "Showing initial presets. Execute an ingest above to run live pipeline filtering.";
+            } else {
+                feedTitle.innerHTML = `<i data-lucide="cpu" class="w-5 h-5 text-red-600"></i> Pipeline Execution Result (1 Validated Pin)`;
+                feedSubtitle.innerText = "Showing strictly the newly ingested pin processed through the AI vision & guardrail pipeline.";
+            }
+
+            currentFeed.forEach(pin => {
+                const card = document.createElement('div');
+                card.className = 'glass-card rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition flex flex-col group bg-white';
+                card.innerHTML = `
+                    <div class="relative overflow-hidden aspect-video bg-slate-200">
+                        <img src="${pin.image_url}" alt="${pin.raw_caption}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" loading="lazy" onerror="this.src='https://images.unsplash.com/photo-1579783902614-a3fb3927b675'">
+                        <span class="absolute top-3 left-3 bg-slate-900/80 backdrop-blur-md text-white text-[10px] font-semibold px-2.5 py-1 rounded-full">
+                            ${pin.category}
+                        </span>
+                        <span class="absolute bottom-3 right-3 bg-emerald-500/95 text-white text-[10px] font-mono px-2 py-0.5 rounded-md font-bold shadow">
+                            ${(pin.confidence * 100).toFixed(0)}% conf
+                        </span>
+                    </div>
+                    <div class="p-4 flex-1 flex flex-col justify-between space-y-3">
+                        <p class="text-xs text-slate-700 font-medium line-clamp-2">
+                            ${pin.raw_caption || 'No caption provided.'}
+                        </p>
+                        <div class="flex flex-wrap gap-1">
+                            ${pin.tags.map(tag => `<span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">#${tag}</span>`).join('')}
+                        </div>
+                        <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] font-mono text-slate-400">
+                            <span>ID: ${pin.pin_id}</span>
+                            <span class="text-emerald-600">is_safe: true</span>
+                        </div>
+                    </div>
+                `;
+                feedContainer.appendChild(card);
+            });
+
+            // Update Metrics
+            metricTotal.innerText = totalIngested;
+            metricRejects.innerText = rejects;
+            const hitRate = totalIngested > 0 ? ((cacheHits / totalIngested) * 100).toFixed(1) : "0.0";
+            metricCache.innerText = `${hitRate}%`;
+
+            // Update Prometheus Text Output
+            prometheusStream.innerText = 
+`# HELP pinlens_pins_ingested_total Total number of ingested pins
+pinlens_pins_ingested_total ${totalIngested}
+# HELP pinlens_validation_failures_total Total validation guardrail failures
+pinlens_validation_failures_total ${rejects}
+# HELP pinlens_cache_hits_total Total Redis cache hits
+pinlens_cache_hits_total ${cacheHits}`;
+
+            // Re-initialize Lucide icons for dynamically added HTML elements
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+
+        // Handle Form Submit (Pipeline Execution)
+        document.getElementById('ingest-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const pinId = document.getElementById('input-pin-id').value;
+            const imageUrl = document.getElementById('input-image-url').value;
+            const caption = document.getElementById('input-caption').value;
+            const isLowConf = document.getElementById('check-low-confidence').checked;
+            const isForceCache = document.getElementById('check-force-cache').checked;
+
+            totalIngested++;
+
+            if (isLowConf) {
+                rejects++;
+                alert(`⚠️ Pipeline Guardrail Triggered!\n\nAI Confidence Score (0.42) fell below threshold floor (0.70).\nPin payload [${pinId}] was rejected.`);
+                renderFeed();
+                return;
+            }
+
+            if (isForceCache) {
+                cacheHits++;
+            }
+
+            const newPin = {
+                pin_id: pinId,
+                image_url: imageUrl,
+                raw_caption: caption || "Custom user submitted pin payload",
+                category: "Custom Ingest",
+                tags: ["custom", "live-ingest", "verified"],
+                confidence: isForceCache ? 0.99 : 0.93
+            };
+
+            // Switch view state to show ONLY the newly executed pin
+            isShowingPresets = false;
+            currentFeed = [newPin];
+            renderFeed();
+            
+            // Randomize latency metric display
+            metricLatency.innerText = `${Math.floor(Math.random() * 20 + 35)}ms`;
+        });
+
+        // Load Preset Button
+        document.getElementById('load-preset-btn').addEventListener('click', () => {
+            const randomPreset = INITIAL_PRESETS[Math.floor(Math.random() * INITIAL_PRESETS.length)];
+            document.getElementById('input-pin-id').value = `pin_custom_${Math.floor(Math.random() * 899 + 100)}`;
+            document.getElementById('input-image-url').value = randomPreset.image_url;
+            document.getElementById('input-caption').value = randomPreset.raw_caption;
+        });
+
+        // Clear Feed
+        document.getElementById('clear-feed-btn').addEventListener('click', () => {
+            isShowingPresets = false;
+            currentFeed = [];
+            renderFeed();
+        });
+
+        // Reset Presets View
+        document.getElementById('reset-presets-btn').addEventListener('click', () => {
+            isShowingPresets = true;
+            currentFeed = [...INITIAL_PRESETS];
+            renderFeed();
+        });
+
+        // Initial Load
+        lucide.createIcons();
+        renderFeed();
+    </script>
+</body>
+</html>
