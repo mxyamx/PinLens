@@ -1,12 +1,15 @@
-from fastapi import FastAPI, HTTPException, status, Response
-from src.models.raw_pin import RawPinIngest
-from src.models.validated_pin import ValidatedPin
-from src.services.validator import PinValidationEngine
-from src.telemetry.metrics import get_telemetry_metrics
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(
-    title="PinLens AI Metadata Ingestion Pipeline",
-    version="1.0.0"
+app = FastAPI(title="PinLens Ingestion Pipeline")
+
+# Enable CORS so your frontend can communicate with your API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows requests from your frontend domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 validator_engine = PinValidationEngine()
