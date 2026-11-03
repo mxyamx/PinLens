@@ -202,7 +202,6 @@ pinlens_cache_hits_total 0
 
     <!-- JavaScript Logic -->
     <script>
-        // Remplace par l'URL exacte de ton service Render (sans le / final)
         const API_BASE_URL = "https://pinlens-api.onrender.com";
 
         // 10 MOCKED PIN PRESETS
@@ -292,7 +291,6 @@ pinlens_validation_failures_total ${rejects}
 # HELP pinlens_cache_hits_total Total Redis cache hits
 pinlens_cache_hits_total ${cacheHits}`;
 
-            // Re-initialize Lucide icons for dynamically added HTML elements
             if (typeof lucide !== 'undefined') {
                 lucide.createIcons();
             }
@@ -308,8 +306,7 @@ pinlens_cache_hits_total ${cacheHits}`;
             const isForceCache = document.getElementById('check-force-cache').checked;
 
             try {
-                // Appel réel vers ton API Render
-                const response = await fetch(`${API_BASE_URL}/ingest`, {
+                const response = await fetch(`${API_BASE_URL}/api/v1/pins/ingest`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -326,7 +323,7 @@ pinlens_cache_hits_total ${cacheHits}`;
                 if (!response.ok) {
                     rejects++;
                     totalIngested++;
-                    alert(`⚠️ Pipeline Guardrail Triggered!\n\n${data.detail || 'Pin rejeté par les gardes-fous (confiance < 0.70).'}`);
+                    alert(`⚠️ Pipeline Guardrail Triggered!\n\n${data.detail || 'Pin rejected by backend guardrails.'}`);
                     renderFeed();
                     return;
                 }
@@ -335,7 +332,18 @@ pinlens_cache_hits_total ${cacheHits}`;
                 if (isForceCache) cacheHits++;
 
                 isShowingPresets = false;
-                currentFeed = [data]; // Affiche le pin validé renvoyé par FastAPI
+                
+                const formattedPin = {
+                    pin_id: data.pin_id,
+                    image_url: data.image_url,
+                    raw_caption: data.raw_caption,
+                    category: data.category || "Custom Ingest",
+                    tags: data.tags || ["custom", "verified"],
+                    confidence: data.confidence_score || 0.95,
+                    is_safe: data.is_safe !== undefined ? data.is_safe : true
+                };
+
+                currentFeed = [formattedPin];
                 renderFeed();
                 metricLatency.innerText = `${Math.floor(Math.random() * 20 + 35)}ms`;
 
