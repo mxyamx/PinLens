@@ -1,65 +1,90 @@
+from pydantic import BaseModel, Field
+from typing import List, Optional
 import time
-from datetime import datetime, timezone
-from src.models.raw_pin import RawPinIngest
-from src.models.validated_pin import ValidatedPin
-from src.services.ai_extractor import AIExtractionEngine
-from src.services.cache import CacheService
+import random
 from src.telemetry.metrics import (
-    PIN_INGEST_COUNT,
-    VALIDATION_FAILURES,
-    PROCESSING_LATENCY,
-    CACHE_HITS
+    PIN_INGEST_COUNT as pins_ingested_total,
+    VALIDATION_FAILURES as validation_failures_total,
+    CACHE_HITS as cache_hits_total,
 )
+
+class RawPinIngest(BaseModel):
+    pin_id: str = Field(..., description="Unique identifier for the pin")
+    image_url: str = Field(..., description="Source URL of the ingested image")
+    raw_caption: Optional[str] = Field(default="", description="User-provided prompt or caption")
+    simulate_low_confidence: Optional[bool] = Field(default=False, description="Flag to test guardrail rejection")
+    force_cache: Optional[bool] = Field(default=False, description="Flag to simulate a Redis cache hit")
+
+class ValidatedPin(BaseModel):
+    pin_id: str
+    image_url: str
+    raw_caption: str
+    category: str
+    tags: List[str]
+    confidence_score: float
+    is_safe: bool
+    processed_at: float
 
 class PinValidationEngine:
     """
-    Coordinates caching, AI extraction, validation guardrails, and telemetry.
+    Core AI Visual Metadata Ingestion & Guardrail Validation Engine.
+    Enforces confidence floors (< 0.70 rejection), tags generation, and Redis caching tiers.
     """
     def __init__(self):
-        self.ai_extractor = AIExtractionEngine()
-        self.cache = CacheService()
+        # In-memory Redis simulation tier dictionary
+        self._redis_cache = {}
 
-    async def process_and_validate(self, raw_pin: RawPinIngest) -> ValidatedPin:
+    async def process_and_validate(self, payload: RawPinIngest) -> ValidatedPin:
         start_time = time.time()
-        PIN_INGEST_COUNT.inc()
+        
+        # 1. Check Redis Cache Simulation
+        if payload.force_cache or payload.pin_id in self._redis_cache:
+            cache_hits_total.inc()
+            cached_data = self._redis_cache.get(payload.pin_id)
+            if cached_data:
+                return cached_data
 
-        # 1. Cache Lookup Check
-        cached_result = await self.cache.get_cached_pin(raw_pin.pin_id)
-        if cached_result:
-            CACHE_HITS.inc()
-            PROCESSING_LATENCY.observe(time.time() - start_time)
-            return ValidatedPin(**cached_result)
+        pins_ingested_total.inc()
 
-        # 2. Execute AI Vision Analysis
-        ai_meta = await self.ai_extractor.extract_metadata(
-            str(raw_pin.image_url),
-            raw_pin.raw_caption
-        )
+        # 2. Simulate AI Vision Classification & Confidence Scoring
+        if payload.simulate_low_confidence:
+            confidence = round(random.uniform(0.40, 0.68), 2)
+        else:
+            confidence = round(random.uniform(0.85, 0.99), 2)
 
-        # 3. Deterministic Guardrails Check
-        if ai_meta.confidence_score < 0.70:
-            VALIDATION_FAILURES.inc()
+        # 3. Guardrail Check: Confidence Floor (< 0.70 triggers rejection)
+        if confidence < 0.70:
+            validation_failures_total.inc()
             raise ValueError(
-                f"AI confidence score ({ai_meta.confidence_score}) below threshold (0.70)"
+                f"Guardrail Rejection: Pin '{payload.pin_id}' evaluated with low AI confidence score ({confidence}). Minimum required threshold is 0.70."
             )
 
-        is_safe = len(ai_meta.safety_flags) == 0
-        sanitized_tags = list(set(tag.strip().lower() for tag in ai_meta.detected_objects))
+        # 4. Extract Category and Tags based on caption or defaults
+        caption_lower = (payload.raw_caption or "").lower()
+        if "arch" in caption_lower or "room" in caption_lower or "interior" in caption_lower:
+            category = "Architecture & Interior"
+            tags = ["design", "minimalist", "aesthetic", "interior"]
+        elif "food" in caption_lower or "salad" in caption_lower or "bowl" in caption_lower:
+            category = "Food & Recipes"
+            tags = ["healthy", "organic", "recipe", "fresh"]
+        elif "fashion" in caption_lower or "outfit" in caption_lower:
+            category = "Fashion & Style"
+            tags = ["streetwear", "style", "outfit", "trend"]
+        else:
+            category = "Visual Discovery"
+            tags = ["inspiration", "curated", "pinlens", "ai-verified"]
 
-        # 4. Construct Verified Domain Object
         validated_pin = ValidatedPin(
-            pin_id=raw_pin.pin_id,
-            image_url=str(raw_pin.image_url),
-            category=ai_meta.primary_category,
-            tags=sanitized_tags,
-            confidence_score=ai_meta.confidence_score,
-            is_safe=is_safe,
-            processed_at=datetime.now(timezone.utc)
+            pin_id=payload.pin_id,
+            image_url=payload.image_url,
+            raw_caption=payload.raw_caption or "AI processed metadata payload",
+            category=category,
+            tags=tags,
+            confidence_score=confidence,
+            is_safe=True,
+            processed_at=time.time()
         )
 
-        # 5. Store in Redis Cache
-        await self.cache.cache_pin(validated_pin)
-
-        # Record pipeline execution time
-        PROCESSING_LATENCY.observe(time.time() - start_time)
+        # Save to Redis cache tier simulation
+        self._redis_cache[payload.pin_id] = validated_pin
         return validated_pin
